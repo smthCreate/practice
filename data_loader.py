@@ -4,10 +4,8 @@ import pandas as pd
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
-from collections import defaultdict
 
-# === Константы ===
-SEQ_LEN = 8  # длина входной последовательности
+# === Константы (единые для всего проекта) ===
 SUBJECT_TO_ID = {
     "math": 0,
     "russian": 1,
@@ -21,66 +19,66 @@ REASON_TO_ID = {
     "competition": 2,
     "family": 3,
     "other": 4,
-    "camp": 5  # ← добавили
-}
-EVENT_TO_ID = {
-    None: 0,
-    "olympiad": 1,
-    "competition": 2,
-    "camp": 3,
-    "illness": 4
+    "camp": 5
 }
 
-class StudentPerformanceDataset(Dataset):
-    def __init__(self, db_path="school.db", seq_len=8):
-        self.seq_len = seq_len
-        self.samples = []
-        self._load_data(db_path)
-
-    def _load_data(self, db_path):
-        conn = sqlite3.connect(db_path)
-        query = """
+def load_samples(db_path="school.db", seq_len=8, split="train", test_ratio=0.2):
+    """
+    Вспомогательная функция: загружает сырые последовательности (список словарей).
+    """
+    conn = sqlite3.connect(db_path)
+    df = pd.read_sql_query("""
         SELECT student_id, subject, week_number, grade, attendance,
                absence_reason, club_attended, event, target
         FROM academic_records
         ORDER BY student_id, subject, week_number
-        """
-        df = pd.read_sql_query(query, conn)
-        conn.close()
+    """, conn)
+    conn.close()
 
-        # Группируем по (student_id, subject)
-        grouped = df.groupby(['student_id', 'subject'])
+    # Делим по student_id
+    all_students = df['student_id'].unique()
+    np.random.seed(42)
+    np.random.shuffle(all_students)
+    split_idx = int(len(all_students) * (1 - test_ratio))
+    
+    if split == "train":
+        student_ids = set(all_students[:split_idx])
+    else:  # "test"
+        student_ids = set(all_students[split_idx:])
+    
+    df = df[df['student_id'].isin(student_ids)].copy()
+    
+    # Формируем последовательности
+    samples = []
+    grouped = df.groupby(['student_id', 'subject'])
+    for (student_id, subject), group in grouped:
+        if len(group) < seq_len + 1:
+            continue
+        group = group.sort_values('week_number').reset_index(drop=True)
+        for i in range(len(group) - seq_len):
+            window = group.iloc[i:i + seq_len]
+            target = group.iloc[i + seq_len]['target']
+            if pd.isna(target):
+                continue
+            samples.append({
+                'subject': SUBJECT_TO_ID[subject],
+                'absence': [REASON_TO_ID.get(r, REASON_TO_ID["other"]) for r in window['absence_reason'].fillna('other').values],
+                'club': [int(c) for c in window['club_attended'].values],
+                'numeric': np.stack([
+                    window['grade'].values,
+                    window['attendance'].values,
+                    window['club_attended'].values
+                ], axis=1).astype(np.float32),
+                'target': float(target)
+            })
+    return samples
 
-        for (student_id, subject), group in grouped:
-            if len(group) < self.seq_len + 1:
-                continue  # пропускаем короткие истории
 
-            # Сортируем по неделе (на всякий случай)
-            group = group.sort_values('week_number').reset_index(drop=True)
-
-            # Скользящее окно
-            for i in range(len(group) - self.seq_len):
-                window = group.iloc[i:i + self.seq_len]
-                target = group.iloc[i + self.seq_len]['target']
-
-                # Пропускаем, если target не определён (NaN)
-                if pd.isna(target):
-                    continue
-
-                self.samples.append({
-                    'subject': SUBJECT_TO_ID[subject],
-                    'absence': [REASON_TO_ID[r] for r in window['absence_reason'].fillna('other').values],
-                    'club': [int(c) for c in window['club_attended'].values],
-                    'numeric': np.stack([
-                        window['grade'].values,
-                        window['attendance'].values,
-                        window['club_attended'].values
-                    ], axis=1).astype(np.float32),
-                    'week': window['week_number'].values % 52,  # циклическая неделя
-                    'target': float(target)
-                })
-
-        print(f"✅ Загружено {len(self.samples)} обучающих последовательностей")
+class StudentPerformanceDataset(Dataset):
+    def __init__(self, db_path="school.db", seq_len=8, split="train", test_ratio=0.2):
+        self.seq_len = seq_len
+        self.samples = load_samples(db_path, seq_len, split, test_ratio)
+        print(f"✅ Загружено {len(self.samples)} последовательностей ({split})")
 
     def __len__(self):
         return len(self.samples)
@@ -95,7 +93,7 @@ class StudentPerformanceDataset(Dataset):
             "target": torch.tensor(sample["target"], dtype=torch.float32)
         }
 
-# === Collate function для батчинга ===
+
 def collate_fn(batch):
     return {
         "subject": torch.stack([item["subject"] for item in batch]),
@@ -105,14 +103,18 @@ def collate_fn(batch):
         "target": torch.stack([item["target"] for item in batch])
     }
 
+
 # === Пример использования ===
 if __name__ == "__main__":
-    dataset = StudentPerformanceDataset(db_path="school.db", seq_len=SEQ_LEN)
-    dataloader = DataLoader(dataset, batch_size=32, shuffle=True, collate_fn=collate_fn)
+    train_dataset = StudentPerformanceDataset(split="train")
+    test_dataset = StudentPerformanceDataset(split="test")
+    
+    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, collate_fn=collate_fn)
+    test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False, collate_fn=collate_fn)
 
-    print("Пример батча:")
-    for batch in dataloader:
-        print("subject.shape:", batch["subject"].shape)      # [32, 8]
-        print("numeric.shape:", batch["numeric"].shape)      # [32, 8, 3]
-        print("target.shape:", batch["target"].shape)        # [32]
+    print("\nПример батча из train:")
+    for batch in train_loader:
+        print("subject.shape:", batch["subject"].shape)
+        print("numeric.shape:", batch["numeric"].shape)
+        print("target.shape:", batch["target"].shape)
         break

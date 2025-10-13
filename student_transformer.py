@@ -74,3 +74,5 @@ class StudentTransformer(nn.Module):
         out = self.transformer(emb)
         last_out = out[:, -1, :]
         return self.head(last_out).squeeze(-1)
+    
+
