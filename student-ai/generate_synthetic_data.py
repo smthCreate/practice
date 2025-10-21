@@ -5,7 +5,7 @@ from faker import Faker
 import sqlite3
 
 # === Настройки ===
-NUM_STUDENTS = 1000
+NUM_STUDENTS = 500
 WEEKS_PER_STUDENT = 20
 DAYS_IN_WEEK = 5  # Рабочие дни в неделе
 SUBJECTS = ["math", "russian", "physics", "literature", "biology"]
