@@ -1,4 +1,3 @@
-# student_transformer.py
 import torch
 import torch.nn as nn
 import math
@@ -7,9 +6,9 @@ class StudentTransformer(nn.Module):
     def __init__(
         self,
         num_subjects=5,
-        num_absence_reasons=6,  # ← ВАЖНО: 6, а не 5!
+        num_absence_reasons=6,
         num_club_types=2,
-        numeric_features=3,
+        numeric_features=2,
         embed_dim=64,
         num_heads=4,
         num_layers=2,
@@ -64,6 +63,12 @@ class StudentTransformer(nn.Module):
 
     def forward(self, x):
         B, L = x["subject"].shape
+        # Проверка размерности перед числовым преобразованием
+        print("Размерность x['numeric'] перед numeric_proj:", x["numeric"].shape)
+        print(f"x['subject'].max(): {x['subject'].max()}")
+        print(f"x['absence'].max(): {x['absence'].max()}")
+        print(f"x['club'].max(): {x['club'].max()}")
+
         emb = (
             self.subject_embed(x["subject"]) +
             self.absence_embed(x["absence"]) +
@@ -74,5 +79,4 @@ class StudentTransformer(nn.Module):
         out = self.transformer(emb)
         last_out = out[:, -1, :]
         return self.head(last_out).squeeze(-1)
-    
 
