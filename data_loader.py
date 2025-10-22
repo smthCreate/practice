@@ -96,7 +96,7 @@ def load_samples(db_path="school.db", seq_len=8, split="train", test_ratio=0.2):
                 'subject': SUBJECT_TO_ID[subject],
                 'absence': [REASON_TO_ID.get(r, REASON_TO_ID["other"]) for r in window['absence_reason'].fillna('other').values],
                 'club': [CLUB_TO_ID.get(c, CLUB_TO_ID["none"]) for c in window['club'].fillna('none').values],  # Преобразуем с использованием словаря
-                'numeric': np.stack([window['grade'].values, window['attended'].values], axis=1).astype(np.float32),
+                'numeric': np.stack([window['grade'].values, window['attended'].values, window['club_intensity'].values], axis=1).astype(np.float32),  # Теперь 3 признака
                 'target': float(target),
                 'total_club_hours': total_club_hours,
                 'club_intensity': club_intensity
