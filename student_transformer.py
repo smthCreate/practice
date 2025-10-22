@@ -7,28 +7,32 @@ class StudentTransformer(nn.Module):
         self,
         num_subjects=5,
         num_absence_reasons=6,
-        num_club_types=2,
-        numeric_features=2,
+        num_club_types=4,  # Количество типов клубов
+        numeric_features=3,  # Число признаков (например, оценка, посещаемость и дополнительные данные)
         embed_dim=64,
         num_heads=4,
         num_layers=2,
         dropout=0.1,
         max_seq_len=52,
-        pred_type="binary"
+        pred_type="regression"  # Изменили на 'regression' для задачи предсказания оценок
     ):
         super().__init__()
         self.embed_dim = embed_dim
         self.pred_type = pred_type
 
+        # Эмбеддинги для категориальных признаков
         self.subject_embed = nn.Embedding(num_subjects, embed_dim)
         self.absence_embed = nn.Embedding(num_absence_reasons, embed_dim)
         self.club_embed = nn.Embedding(num_club_types, embed_dim)
 
+        # Линейная проекция для числовых признаков
         self.numeric_proj = nn.Linear(numeric_features, embed_dim)
         self.norm_numeric = nn.LayerNorm(embed_dim)
 
+        # Позиционное кодирование
         self.pos_encoding = self._build_positional_encoding(max_seq_len, embed_dim)
 
+        # Трансформер
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=embed_dim,
             nhead=num_heads,
@@ -37,21 +41,13 @@ class StudentTransformer(nn.Module):
         )
         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
 
-        if pred_type == "binary":
-            self.head = nn.Sequential(
-                nn.Linear(embed_dim, 32),
-                nn.ReLU(),
-                nn.Dropout(dropout),
-                nn.Linear(32, 1),
-                nn.Sigmoid()
-            )
-        else:
-            self.head = nn.Sequential(
-                nn.Linear(embed_dim, 32),
-                nn.ReLU(),
-                nn.Dropout(dropout),
-                nn.Linear(32, 1)
-            )
+        # Выходная голова для регрессии (для предсказания оценки)
+        self.head = nn.Sequential(
+            nn.Linear(embed_dim, 32),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(32, 1)  # Без Sigmoid, так как мы предсказываем реальное значение
+        )
 
     def _build_positional_encoding(self, max_len, d_model):
         pe = torch.zeros(max_len, d_model)
@@ -63,12 +59,6 @@ class StudentTransformer(nn.Module):
 
     def forward(self, x):
         B, L = x["subject"].shape
-        # Проверка размерности перед числовым преобразованием
-        print("Размерность x['numeric'] перед numeric_proj:", x["numeric"].shape)
-        print(f"x['subject'].max(): {x['subject'].max()}")
-        print(f"x['absence'].max(): {x['absence'].max()}")
-        print(f"x['club'].max(): {x['club'].max()}")
-
         emb = (
             self.subject_embed(x["subject"]) +
             self.absence_embed(x["absence"]) +
@@ -78,5 +68,7 @@ class StudentTransformer(nn.Module):
         emb = emb + self.pos_encoding[:, :L, :].to(emb.device)
         out = self.transformer(emb)
         last_out = out[:, -1, :]
-        return self.head(last_out).squeeze(-1)
+        return self.head(last_out).squeeze(-1)  # Выводим одно значение (оценка)
+
+
 
