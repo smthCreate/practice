@@ -34,21 +34,21 @@ def load_samples(db_path="school.db", seq_len=8, split="train", test_ratio=0.2):
     """
     conn = sqlite3.connect(db_path)
 
-    # Загрузка посещаемости
+    # Загрузка посещаемости (attendance)
     attendance_df = pd.read_sql_query("""
         SELECT student_id, subject, week_number, day_number, attended, absence_reason
         FROM attendance
         ORDER BY student_id, subject, week_number, day_number
     """, conn)
     
-    # Загрузка оценок
+    # Загрузка оценок (grades)
     grades_df = pd.read_sql_query("""
         SELECT student_id, subject, week_number, day_number, grade
         FROM grades
         ORDER BY student_id, subject, week_number, day_number
     """, conn)
 
-    # Загрузка кружков и мероприятий
+    # Загрузка кружков и мероприятий (clubs_events)
     clubs_events_df = pd.read_sql_query("""
         SELECT student_id, week_number, day_number, club, event, club_intensity, total_club_hours
         FROM clubs_events
@@ -104,7 +104,6 @@ def load_samples(db_path="school.db", seq_len=8, split="train", test_ratio=0.2):
     return samples
 
 
-
 class StudentPerformanceDataset(Dataset):
     def __init__(self, db_path="school.db", seq_len=8, split="train", test_ratio=0.2):
         self.seq_len = seq_len
@@ -133,6 +132,8 @@ def collate_fn(batch):
         "numeric": torch.stack([item["numeric"] for item in batch]),
         "target": torch.stack([item["target"] for item in batch])
     }
+
+
 
 # === Пример использования ===
 # if __name__ == "__main__":

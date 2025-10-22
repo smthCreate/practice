@@ -2,8 +2,8 @@ import sqlite3
 import os
 
 # Удаление старой базы данных (если существует)
-if os.path.exists("school.db"):
-    os.remove("school.db")
+if os.path.exists("school_main.db"):
+    os.remove("school_main.db")
     print("✅ Старый файл базы данных удален.")
 
 # Создание новой базы данных
@@ -64,4 +64,4 @@ CREATE TABLE IF NOT EXISTS clubs_events (
 # Подтверждение изменений и закрытие соединения
 conn.commit()
 conn.close()
-print("✅ БД school.db создана с обновленной структурой!")
+print("✅ БД school_main.db создана с обновленной структурой!")
